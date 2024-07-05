@@ -145,8 +145,7 @@ SUB Game
         IF move_right THEN p1.x_pos = p1.x_pos + p1.speed
 
         ' Draw the player "sprite"
-        LINE (p1.x_pos, p1.y_pos)-(p1.x_pos + p1.spr_size,_
-                    p1.y_pos + p1.spr_size), p1.spr_color, BF
+        CIRCLE (p1.x_pos, p1.y_pos), p1.spr_size, p1.spr_color
 
         ' Poll mouse input
         WHILE _MOUSEINPUT: WEND
@@ -156,7 +155,7 @@ SUB Game
         'middle_click = _MOUSEBUTTON(3)
         'right_cick = _MOUSEBUTTON(2)
 
-        DIM AS INTEGER id ', is_colliding
+        DIM AS INTEGER id
         ' Draw enemy sprites and update their x,y coordinates
         FOR id = LBOUND(enemies) TO UBOUND(enemies)
             IF enemies(id).alive THEN
@@ -165,9 +164,10 @@ SUB Game
                     SOUND 37, 4.5, 0.25, 0.0, 2 ' Simulate damage with a sound
                 END IF
 
-                ' Render enemy.
-                CIRCLE (enemies(id).x_pos, enemies(id).y_pos), enemies(id).spr_size, _
-                        enemies(id).spr_color
+                ' Render enemy as a box
+                LINE (enemies(id).x_pos, enemies(id).y_pos)-(enemies(id).x_pos +_
+                        enemies(id).spr_size, enemies(id).y_pos + enemies(id).spr_size),_
+                        enemies(id).spr_color, BF
 
                 ' Enemy movement is less predictable
                 IF INT(RND * 6) + 1 = 1 THEN
@@ -187,12 +187,13 @@ SUB Game
                 END IF
             ELSE
                 IF enemies(id).x_pos THEN ' Enemy has a nonzero coordinate  -- it's a corpse
-                    CIRCLE (enemies(id).x_pos, enemies(id).y_pos), enemies(id).spr_size, _
-                            _RGB32(133, 0, 55)
+                    LINE (enemies(id).x_pos, enemies(id).y_pos)-(enemies(id).x_pos +_
+                        enemies(id).spr_size, enemies(id).y_pos + enemies(id).spr_size),_
+                        _RGB32(133, 0, 55), BF
                 END IF
             END IF
 
-            IF left_click AND NOT left_click_held THEN ' Has player taken a shot?
+            IF left_click THEN ' Has player taken a shot?
                 left_click_held = TRUE ' Prevent player holding fire button
 
                 IF CheckShot(cursor_x, cursor_y, enemies(id)) THEN
