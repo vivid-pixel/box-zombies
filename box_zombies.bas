@@ -1,4 +1,5 @@
-'===== Box Zombies =====
+' Box Zombies -- box_zombies.bas
+
 
 ' Require variables to be declared
 OPTION _EXPLICIT
@@ -6,7 +7,7 @@ OPTION _EXPLICIT
 ' Game config
 CONST SCREEN_WIDTH = 640
 CONST SCREEN_HEIGHT = 480
-CONST COLLISION_BUFFER = 2
+CONST HIT_BUFFER = 4
 
 ' Booleans
 CONST FALSE = 0
@@ -19,27 +20,175 @@ CONST HOT_PINK = _RGB32(222, 6, 127)
 ' Game objects
 TYPE ENEMY
     AS _UNSIGNED LONG spr_color
-    AS INTEGER alive, x_pos, y_pos, speed, spr_size
+    AS INTEGER alive, speed, spr_size, x_pos, y_pos
 END TYPE
 
 TYPE PLAYER
     AS _UNSIGNED LONG spr_color
-    AS INTEGER alive, x_pos, y_pos, speed, spr_size
+    AS INTEGER alive, health, score, speed, spr_size, x_pos, y_pos
 END TYPE
 
 ' Game object instances and other global attributes
 DIM SHARED p1 AS PLAYER
 DIM SHARED enemies(0 TO 19) AS ENEMY
-DIM SHARED AS INTEGER center_x, center_y
-center_x = SCREEN_WIDTH / 2
-center_y = SCREEN_HEIGHT / 2
+DIM SHARED AS LONG center_x, center_y
+center_x = SCREEN_WIDTH \ 2
+center_y = SCREEN_HEIGHT \ 2
 
-' Fire the missiles!
-Game
+' Entry point
+GameStart
+
+
+' |||||||||| Functions Begin ||||||||||||
+FUNCTION CheckCollision (id%)
+    DIM AS INTEGER is_colliding
+    is_colliding = (ABS(p1.x_pos - enemies(id%).x_pos) <= p1.spr_size - HIT_BUFFER +_
+                    enemies(id%).spr_size AND ABS(p1.y_pos - enemies(id%).y_pos)_
+                    <= p1.spr_size - HIT_BUFFER + enemies(id%).spr_size)
+
+    IF is_colliding THEN CheckCollision = TRUE ELSE CheckCollision = FALSE
+END FUNCTION
+
+
+FUNCTION CheckShot (shot_x%, shot_y%, enemy AS ENEMY)
+    DIM AS INTEGER enemy_hit
+    enemy_hit = ABS(shot_x% - enemy.x_pos%) + ABS(shot_y% - enemy.y_pos%) <= _
+                    enemy.spr_size + HIT_BUFFER
+
+    CheckShot = enemy_hit
+END FUNCTION
+' |||||||||| Functions End ||||||||||||||
+
+
+' |||||||||| Subroutines Begin ||||||||||
+SUB DrawEnemy (id%)
+    IF enemies(id%).alive THEN
+        ' Render enemy as a box
+                LINE (enemies(id%).x_pos, enemies(id%).y_pos)-(enemies(id%).x_pos +_
+                        enemies(id%).spr_size, enemies(id%).y_pos + enemies(id%).spr_size),_
+                        enemies(id%).spr_color, BF
+    ELSE
+        ' Check if enemy has a nonzero coordinate (meaning it is a corpse)
+        IF enemies(id%).x_pos THEN
+                    LINE (enemies(id%).x_pos, enemies(id%).y_pos)-(enemies(id%).x_pos +_
+                        enemies(id%).spr_size, enemies(id%).y_pos + enemies(id%).spr_size),_
+                        _RGB32(133, 0, 55), BF
+        END IF
+    END IF
+END SUB
+
+
+SUB DrawHUD
+    DIM AS LONG lines, chars
+
+    ' Calculate quantity of text columns & rows that fit within our screen
+    lines = _HEIGHT \ 16
+    chars = _WIDTH \ 8
+
+    ' Transparent background for HUD so we don't block the view
+    _PRINTMODE _KEEPBACKGROUND
+
+    ' Draw to the lower-right corner
+    LOCATE lines - 2, chars - 16
+    PRINT "Health:"; p1.health
+    LOCATE lines - 3, chars - 16
+    PRINT "Score:"; p1.score
+END SUB
+
+
+SUB DrawPlayer
+    ' Draw the player "sprite"
+    CIRCLE (p1.x_pos, p1.y_pos), p1.spr_size, p1.spr_color
+END SUB
+
+
+SUB GameStart
+    ' Do some prep work
+    SCREEN _NEWIMAGE(SCREEN_WIDTH, SCREEN_HEIGHT, 32)
+    RANDOMIZE TIMER
+    InitEnemies
+    InitPlayer
+
+    ' Timers and their handlers
+    DIM AS INTEGER spawn_timer
+    spawn_timer = _FREETIMER
+    ON TIMER(spawn_timer, 5) SpawnEnemy
+    TIMER(spawn_timer) ON
+
+    ' Friendly names for cursor attributes
+    DIM AS INTEGER cursor_x, cursor_y, left_click, left_click_held ', middle_click, right_click
+
+    ' Game loop
+    DO
+        CLS ' Erase all the things
+        _LIMIT 60 ' Frames per second
+
+        MovePlayer
+        DrawPlayer
+
+        ' Poll mouse input
+        WHILE _MOUSEINPUT: WEND
+        cursor_x = _MOUSEX
+        cursor_y = _MOUSEY
+        left_click = _MOUSEBUTTON(1)
+        'middle_click = _MOUSEBUTTON(3)
+        'right_cick = _MOUSEBUTTON(2)
+
+        DIM AS INTEGER id
+
+        ' Draw enemy sprites and update their x,y coordinates
+        FOR id = LBOUND(enemies) TO UBOUND(enemies)
+            MoveEnemy id
+            DrawEnemy id
+
+            ' Check for collision between player and enemy sprite
+            IF CheckCollision(id) THEN
+                ' Reduce player health
+                p1.health = p1.health - 5
+            END IF
+
+            ' Has player taken a shot?
+            IF left_click THEN
+                ' Limit player to semi-automatic shots (one per click, can't hold button)
+                left_click_held = TRUE
+
+                IF CheckShot(cursor_x, cursor_y, enemies(id)) THEN
+                    ' Player hits an enemy -- intentionally or otherwise
+                    IF enemies(id).alive THEN
+                        p1.score = p1.score + 10
+                        enemies(id).alive = FALSE
+                    END IF
+                ELSE
+                    ' Player no longer holding button
+                    left_click_held = FALSE
+                END IF
+            END IF
+        NEXT id
+
+        DrawHUD ' Called last so the HUD stays on top
+
+        _DISPLAY ' Update screen
+    LOOP UNTIL _KEYDOWN(27) ' Escape key to exit
+    SYSTEM ' Instantly quits game
+END SUB
+
+
+SUB InitEnemies
+    DIM AS INTEGER id
+    FOR id = LBOUND(enemies) TO UBOUND(enemies)
+        enemies(id).alive = FALSE
+        enemies(id).speed = 1
+        enemies(id).spr_color = EM_GREEN
+        enemies(id).spr_size = 8
+        enemies(id).x_pos = 0
+        enemies(id).y_pos = 0
+    NEXT id
+END SUB
 
 
 SUB InitPlayer
     p1.alive = TRUE
+    p1.health = 100
     p1.speed = 2
     p1.spr_color = HOT_PINK
     p1.spr_size = 6
@@ -48,16 +197,61 @@ SUB InitPlayer
 END SUB
 
 
-SUB InitEnemiesArray
-    DIM AS INTEGER id
-    FOR id = LBOUND(enemies) TO UBOUND(enemies)
-        enemies(id).alive = FALSE
-        enemies(id).speed = 1
-        enemies(id).spr_color = EM_GREEN
-        enemies(id).spr_size = 6
-        enemies(id).x_pos = 0
-        enemies(id).y_pos = 0
-    NEXT id
+SUB MoveEnemy (id%)
+    IF enemies(id%).alive THEN
+        ' Randomize enemy movement to look more organic
+        IF INT(RND * 6) + 1 = 1 THEN
+            ' Enemies follow the player -- no fancy formula needed
+            IF p1.y_pos < enemies(id%).y_pos THEN
+                enemies(id%).y_pos = enemies(id%).y_pos - enemies(id%).speed
+            END IF
+            IF p1.y_pos > enemies(id%).y_pos THEN
+                enemies(id%).y_pos = enemies(id%).y_pos + enemies(id%).speed
+            END IF
+            IF p1.x_pos < enemies(id%).x_pos THEN
+                enemies(id%).x_pos = enemies(id%).x_pos - enemies(id%).speed
+            END IF
+            IF p1.x_pos > enemies(id%).x_pos THEN
+                enemies(id%).x_pos = enemies(id%).x_pos + enemies(id%).speed
+            END IF
+        END IF
+    END IF
+END SUB
+
+
+SUB MovePlayer
+    ' Changes in player movement
+    DIM AS INTEGER delta_x, delta_y
+
+    ' Friendly names for movement keys
+    DIM AS INTEGER move_up, move_down, move_left, move_right
+
+    ' Define movement keys
+    move_up = _KEYDOWN(119) ' W
+    move_down = _KEYDOWN(115) ' S
+    move_left = _KEYDOWN(97) ' A
+    move_right = _KEYDOWN(100) ' D
+
+    ' Handle movement with keyboard inputs
+    IF move_up THEN delta_y = delta_y - 1
+    IF move_down THEN delta_y = delta_y + 1
+    IF move_left THEN delta_x = delta_x - 1
+    IF move_right THEN delta_x = delta_x + 1
+
+    ' Cap movement speed so diagonals aren't faster
+    IF delta_x > 1 THEN
+        delta_x = 1
+    ELSE IF delta_x < -1 THEN delta_x = -1
+    END IF
+
+    IF delta_y > 1 THEN
+        delta_y = 1
+    ELSE IF delta_y < -1 THEN delta_y = -1
+    END IF
+
+    ' Now move the player
+    p1.x_pos = p1.x_pos + delta_x
+    p1.y_pos = p1.y_pos + delta_y
 END SUB
 
 
@@ -83,128 +277,5 @@ SUB SpawnEnemy
         enemies(id).alive = TRUE
     END IF
 END SUB
+' |||||||||| Subroutines End ||||||||||
 
-
-FUNCTION CheckCollision (id AS INTEGER)
-    DIM AS INTEGER is_colliding
-    is_colliding = (ABS(p1.x_pos - enemies(id).x_pos) + COLLISION_BUFFER <= p1.spr_size + _
-                    enemies(id).spr_size AND ABS(p1.y_pos - enemies(id).y_pos) + _
-                    COLLISION_BUFFER <= p1.spr_size + enemies(id).spr_size)
-
-    ' Return
-    IF is_colliding THEN CheckCollision = TRUE ELSE CheckCollision = FALSE
-END FUNCTION
-
-
-' Functions can't use the QB64 syntax for defining multiple variables of same type :(
-FUNCTION CheckShot (shot_x%, shot_y%, enemy AS ENEMY)
-    DIM AS INTEGER enemy_hit
-
-    enemy_hit = (ABS(shot_x% - enemy.x_pos%) + ABS(shot_y% - enemy.y_pos%) <= _
-                    enemy.spr_size + COLLISION_BUFFER * 2)
-
-    ' Return
-    CheckShot = enemy_hit
-END FUNCTION
-
-
-SUB Game
-    ' Do some prep work
-    SCREEN _NEWIMAGE(SCREEN_WIDTH, SCREEN_HEIGHT, 32)
-    RANDOMIZE TIMER
-    InitEnemiesArray
-    InitPlayer
-
-    ' Friendly names for movement keys
-    DIM AS INTEGER move_up, move_down, move_left, move_right
-
-    ' Friendly names for cursor attributes
-    DIM AS INTEGER cursor_x, cursor_y, left_click, left_click_held ', middle_click, right_click
-
-    ' Timers and their handlers
-    DIM AS INTEGER spawn_timer
-    spawn_timer = _FREETIMER
-    ON TIMER(spawn_timer, 5) SpawnEnemy
-    TIMER(spawn_timer) ON
-
-    ' Game loop
-    DO
-        CLS ' Erase all the things
-        _LIMIT 60 ' Frames per second
-
-        ' Define movement keys
-        move_up = _KEYDOWN(119) ' W
-        move_down = _KEYDOWN(115) ' S
-        move_left = _KEYDOWN(97) ' A
-        move_right = _KEYDOWN(100) ' D
-
-        ' Handle movement with keyboard inputs
-        IF move_up THEN p1.y_pos = p1.y_pos - p1.speed
-        IF move_down THEN p1.y_pos = p1.y_pos + p1.speed
-        IF move_left THEN p1.x_pos = p1.x_pos - p1.speed
-        IF move_right THEN p1.x_pos = p1.x_pos + p1.speed
-
-        ' Draw the player "sprite"
-        LINE (p1.x_pos, p1.y_pos)-(p1.x_pos + p1.spr_size,_
-                    p1.y_pos + p1.spr_size), p1.spr_color, BF
-
-        ' Poll mouse input
-        WHILE _MOUSEINPUT: WEND
-        cursor_x = _MOUSEX
-        cursor_y = _MOUSEY
-        left_click = _MOUSEBUTTON(1)
-        'middle_click = _MOUSEBUTTON(3)
-        'right_cick = _MOUSEBUTTON(2)
-
-        DIM AS INTEGER id ', is_colliding
-        ' Draw enemy sprites and update their x,y coordinates
-        FOR id = LBOUND(enemies) TO UBOUND(enemies)
-            IF enemies(id).alive THEN
-                ' Check for collision between player and enemy sprite
-                IF CheckCollision(id) THEN
-                    SOUND 37, 4.5, 0.25, 0.0, 2 ' Simulate damage with a sound
-                END IF
-
-                ' Render enemy.
-                CIRCLE (enemies(id).x_pos, enemies(id).y_pos), enemies(id).spr_size, _
-                        enemies(id).spr_color
-
-                ' Enemy movement is less predictable
-                IF INT(RND * 6) + 1 = 1 THEN
-                    ' Enemies follow the player -- no fancy formula needed
-                    IF p1.y_pos < enemies(id).y_pos THEN
-                        enemies(id).y_pos = enemies(id).y_pos - enemies(id).speed
-                    END IF
-                    IF p1.y_pos > enemies(id).y_pos THEN
-                        enemies(id).y_pos = enemies(id).y_pos + enemies(id).speed
-                    END IF
-                    IF p1.x_pos < enemies(id).x_pos THEN
-                        enemies(id).x_pos = enemies(id).x_pos - enemies(id).speed
-                    END IF
-                    IF p1.x_pos > enemies(id).x_pos THEN
-                        enemies(id).x_pos = enemies(id).x_pos + enemies(id).speed
-                    END IF
-                END IF
-            ELSE
-                IF enemies(id).x_pos THEN ' Enemy has a nonzero coordinate  -- it's a corpse
-                    CIRCLE (enemies(id).x_pos, enemies(id).y_pos), enemies(id).spr_size, _
-                            _RGB32(133, 0, 55)
-                END IF
-            END IF
-
-            IF left_click AND NOT left_click_held THEN ' Has player taken a shot?
-                left_click_held = TRUE ' Prevent player holding fire button
-
-                IF CheckShot(cursor_x, cursor_y, enemies(id)) THEN
-                    ' Player hits an enemy -- intentionally or otherwise
-                    enemies(id).alive = FALSE
-                END IF
-            ELSE
-                left_click_held = FALSE
-            END IF
-
-        NEXT id
-        _DISPLAY
-    LOOP UNTIL _KEYDOWN(27) ' Escape key to exit
-    SYSTEM ' Instantly quits game
-END SUB
