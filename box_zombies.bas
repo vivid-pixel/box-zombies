@@ -224,7 +224,7 @@ SUB MovePlayer
     DIM AS INTEGER delta_x, delta_y
 
     ' Friendly names for movement keys
-    DIM AS INTEGER move_up, move_down, move_left, move_right
+    DIM AS LONG move_up, move_down, move_left, move_right
 
     ' Define movement keys
     move_up = _KEYDOWN(119) ' W
